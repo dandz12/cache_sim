@@ -138,6 +138,7 @@ int findLine(unsigned int address, int lineI)
 		return lineI;}		
 }
 
+//add the address to the specified line
 void addToCache(unsigned int addr, int lineI)
 {
 	//allocate new node
