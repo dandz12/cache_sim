@@ -9,8 +9,8 @@
 #include <malloc.h>
 #include <stdbool.h>
 
-#define GETS(x) ((x >> 5) & 0x3FF)
-#define GETT(x) (x >> 15)
+#define GETS(x) ((x >> 5) & 0x3FF)		//this macro will return the set number given an address
+#define GETT(x) (x >> 15)			//this macro will return a tag given an address
 
 void initilize(void);
 void read(unsigned int);
