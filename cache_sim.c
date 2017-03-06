@@ -84,23 +84,39 @@ int main(int argc, char* argv)
 		if(c == 'r'){
 			//get address from file
 			fscanf(trace, "%x", &addr);
+			reads++;		//increment reads
+			accesses++;		//increment accesses
 
 			//call read function
 			read(addr);
 		} else if(c == 'w'){
+			//get address from file
 			fscanf(trace, "%x", &addr);
+			writes++;		//increment writes
+			accesses++;		//increment accesses
+
+			//call write function
 			write(addr);
 		} else if(c == '-'){
 			//call debug function
 		} else if(c == EOF)
 			break;
 	}
+	cycleswithcache = ((hits * 1) + (misses * 51));
+	cycleswithoutcache = (accesses * 50);
 
-	for(int i = 0; i < 1024; i ++)
-	{
-		if(set[i].line[0].history != NULL)
-			printf("line %d\n", i);
-	}
+	//Print the results
+	printf("Accesses:\t\t%d\n", accesses);
+	printf("Reads:\t\t\t%d\n", reads);
+	printf("Writes:\t\t\t%d\n", writes);
+	printf("Stream-in:\t\t%d\n", streamins);
+	printf("Stream-out:\t\t%d\n", streamouts);
+	printf("Misses:\t\t\t%d\n", misses);
+	printf("Hits:\t\t\t%d\n", hits);
+	printf("Read Hits:\t\t%d\n", readhits);
+	printf("Write Hits:\t\t%d\n", writehits);
+	printf("Cycles W/Cache:\t\t%d\n", cycleswithcache);
+	printf("Cycles W/O Cache:\t%d\n", cycleswithoutcache);
 
 	fclose(trace);
 
@@ -121,11 +137,14 @@ void initilize(void)
 void read(unsigned int address)
 {	
 	//find a tag match
-	if(findMatch(address, 0) >= 0){		//match found
-		printf("In cache! set 0x%x, line %d\n", GETS(address), findMatch(address, 0));
+	if(findMatch(address, 0) >= 0){			 //match found
+		hits++;					 //increment hits
+		readhits++;                              //read hit so increment read hits
+		resetlru(address, findMatch(address, 0));//reset the LRU based on this line having been accessed;
 	}
 	else{					//no match found, find someone to evict
-		printf("Not in cache");
+		streamins++;
+		misses++;
 		addToCache(address, findLine(address, 0));
 	}
 }
@@ -133,13 +152,14 @@ void read(unsigned int address)
 void write(unsigned int address)
 {	
 	//find a tag match
-	if(findMatch(address, 0) >= 0)
-	{	//match found
-		printf("\tmatch found! %d\n", findMatch(address, 0));
+	if(findMatch(address, 0) >= 0){			//match found
+		hits++;					//increment hits
+		writehits++;				//write hit so increment write hits
+		resetlru(address, findMatch(address, 0));//reset the LRU based on this line having been accessed
 	}
-	else
-	{					//no match found, find someone to evict
-		printf("no match found\n");
+	else{					//no match found, find someone to evict
+		streamins++;
+		misses++;
 		addToCache(address, findLine(address, 0));
 	}
 }
@@ -197,13 +217,14 @@ int findLine(unsigned int address, int lineI)
 {
 
 	if(lineI > 3){
-		printf("************************placing in line %d based on findoldest function*********************", findoldest(address));
-		return findoldest(address);}
+		streamouts++;
+		return findoldest(address);
+	}
 	else if(set[GETS(address)].line[lineI].valid)
 		return findLine(address, (lineI + 1));	
 	else{
-		printf(" adding to set 0x%x, line %d\n", GETS(address), lineI);
-		return lineI;}		
+		return lineI;
+		}		
 }
 
 //add the address to the specified line
