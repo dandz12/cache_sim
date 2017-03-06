@@ -1,10 +1,11 @@
 /************************************************************************************
-*using unsigned int now instead of unsigned long, int is 32 bits
-*
-*
-*
+*Author: Daniel Diaz, Jelon Anderson
+*Class: ECE486
+*This program is a cache simulator, referece the FS for specs on input file.
+*This program will read in an input file and output all important information
+*at the end. Debug flags are optional but can be specified in the input file or
+*passed in as arguments to the file.
 *************************************************************************************/
-
 #include <stdio.h>
 #include <malloc.h>
 #include <stdbool.h>
@@ -25,6 +26,7 @@ int findoldest(unsigned int);
 void setFlags(char);
 int setD(unsigned int, int);
 
+//node to hold line history as it's added to the cache
 struct memNode{
 	unsigned int address;
 	int tag;
@@ -36,6 +38,7 @@ struct memNode{
 	struct memNode* next;
 };
 
+//function to print history in a particular line
 void printHistory(struct memNode*);
 
 struct line{
@@ -50,14 +53,15 @@ struct set{
 	struct line line[4];
 };
 
-// Define Global variables
+// Define Global flags
 struct set set[SET_SIZE];
 bool version_flag = false;
 bool trace_flag = false;
 bool dump_flag = false;
 bool g_read = false;		//this variable is a flag for the dump debug command
 bool g_hit = false;		//this variable is a flag for the dump debug command
-int  g_lru = 0;
+
+//define global variables for printout at the end of the program
 int accesses = 0;
 int reads = 0;
 int writes = 0;
@@ -70,7 +74,6 @@ int hits = 0;
 int readhits = 0;
 int writehits = 0;
 int in = 0;
-
 
 int main(int argc, char* argv[])
 {
@@ -107,6 +110,7 @@ int main(int argc, char* argv[])
 			accesses++;		//increment accesses
 			g_read = true;
 	
+			//print input if the trace flag is present
 			if(trace_flag){
 				printf("r 0x%x ", addr);
 				in++;
@@ -124,6 +128,7 @@ int main(int argc, char* argv[])
 			accesses++;		//increment accesses
 			g_read = false;
 		
+			//print input if the trace flag is present
 			if(trace_flag){
 				printf("w 0x%x ", addr);
 				in++;
