@@ -9,6 +9,7 @@
 #include <malloc.h>
 #include <stdbool.h>
 
+#define VERSION 0.5
 #define SET_SIZE 1024
 #define GETS(x) ((x >> 5) & 0x3FF)		//this macro will return the set number given an address
 #define GETT(x) (x >> 15)			//this macro will return the tag given an address
@@ -21,11 +22,22 @@ int findLine(unsigned int, int);
 void addToCache(unsigned int, int);
 void resetlru(unsigned int , int);
 int findoldest(unsigned int);
+void setFlags(char);
+int setD(unsigned int, int);
 
+//this node will be used when we have the dump debug command present. We don't keep track of
+//the LRU, Valid, or Dirty bits as noted in part of the specs. This is because when the line would be
+//added to history, it will not be valid, will not be dirty, and the LRU will be 4 since it will
+//be the line evicted to end up in history.
 struct memNode{
 	unsigned int address;
+	int tag;
+	bool hit;
+	bool read;
 	struct memNode* next;
 };
+
+void printHistory(struct memNode*);
 
 struct line{
 	bool valid;
@@ -44,6 +56,8 @@ struct set set[SET_SIZE];
 bool version_flag = false;
 bool trace_flag = false;
 bool dump_flag = false;
+bool g_read = false;		//this variable is a flag for the dump debug command
+bool g_hit = false;		//this variable is a flag for the dum debug command
 int accesses = 0;
 int reads = 0;
 int writes = 0;
@@ -55,8 +69,10 @@ int misses = 0;
 int hits = 0;
 int readhits = 0;
 int writehits = 0;
+int in = 0;
 
-int main(int argc, char* argv)
+
+int main(int argc, char* argv[])
 {
 	FILE *trace;
 	char c;
@@ -71,11 +87,14 @@ int main(int argc, char* argv)
 		return 1;
 	}
 	
-	initilize();				//initilize the memory history
+	initilize();					//initilize the memory history
 
-		
+	if(argc > 1){
+		for(int i = 1; i < argc; i++){		//loop through arguments and set flags
+			if(argv[i][0] == '-')		//testing to make sure input is a debug flag
+				setFlags(argv[i][1]);}}	//call function to set flags
+	
 	//loop through the file
-//	for(int i = 0; i < 200; i ++){		//more readable.
 	while(1){
 		//read a character from the trace file
 		c = fgetc(trace);
@@ -86,6 +105,15 @@ int main(int argc, char* argv)
 			fscanf(trace, "%x", &addr);
 			reads++;		//increment reads
 			accesses++;		//increment accesses
+			g_read = true;
+	
+			if(trace_flag){
+				printf("r 0x%x ", addr);
+				in++;
+				if(in == 8){
+					printf("\n");
+					in = 0;}
+			}
 
 			//call read function
 			read(addr);
@@ -94,16 +122,52 @@ int main(int argc, char* argv)
 			fscanf(trace, "%x", &addr);
 			writes++;		//increment writes
 			accesses++;		//increment accesses
+			g_read = false;
+		
+			if(trace_flag){
+				printf("w 0x%x ", addr);
+				in++;
+				if(in == 8){
+					printf("\n");
+					in = 0;}
+			}
 
 			//call write function
 			write(addr);
 		} else if(c == '-'){
-			//call debug function
+			setFlags(fgetc(trace));
 		} else if(c == EOF)
 			break;
 	}
+	
+	//determine the cycles based on the hits and misses
 	cycleswithcache = ((hits * 1) + (misses * 51));
 	cycleswithoutcache = (accesses * 50);
+
+	//print pertanent dump information
+	if(dump_flag)
+	{
+		for(int i = 0; i < 1024; i ++)
+		{
+			if(set[i].line[0].history != NULL){
+				printf("Line %d: ", i);
+				printHistory(set[i].line[0].history);}
+			if(set[i].line[1].history != NULL){
+				printf("Line %d: ", i);
+				printHistory(set[i].line[1].history);}
+			if(set[i].line[2].history != NULL){
+				printf("Line %d: ", i);
+				printHistory(set[i].line[2].history);}
+			if(set[i].line[3].history != NULL){
+				printf("Line %d: ", i);
+				printHistory(set[i].line[3].history);}
+		}
+	}
+
+	//print version if flag is set
+	if(version_flag)
+		printf("Version: %.2f\n", VERSION);
+
 
 	//Print the results
 	printf("Accesses:\t\t%d\n", accesses);
@@ -118,12 +182,13 @@ int main(int argc, char* argv)
 	printf("Cycles W/Cache:\t\t%d\n", cycleswithcache);
 	printf("Cycles W/O Cache:\t%d\n", cycleswithoutcache);
 
+
 	fclose(trace);
 
 return 0;
 }
 
-
+//set all line history to NULL
 void initilize(void)
 {
 	for(int i = 0; i < 1024; i ++){
@@ -134,36 +199,50 @@ void initilize(void)
 	}
 }
 
+//function for reading an address
 void read(unsigned int address)
 {	
 	//find a tag match
 	if(findMatch(address, 0) >= 0){			 //match found
 		hits++;					 //increment hits
 		readhits++;                              //read hit so increment read hits
+		g_hit = true;
 		resetlru(address, findMatch(address, 0));//reset the LRU based on this line having been accessed;
 	}
 	else{					//no match found, find someone to evict
 		streamins++;
 		misses++;
-		addToCache(address, findLine(address, 0));
+		g_hit = false;
+		addToCache(address, setD(address, findLine(address, 0)));
 	}
 }
 
+//function to write an address
 void write(unsigned int address)
 {	
 	//find a tag match
 	if(findMatch(address, 0) >= 0){			//match found
 		hits++;					//increment hits
 		writehits++;				//write hit so increment write hits
+		g_hit = true;
+		set[GETS(address)].line[findMatch(address, 0)].dirty = true;	
 		resetlru(address, findMatch(address, 0));//reset the LRU based on this line having been accessed
 	}
 	else{					//no match found, find someone to evict
 		streamins++;
 		misses++;
-		addToCache(address, findLine(address, 0));
+		g_hit = false;
+		addToCache(address, setD(address, findLine(address, 0)));
 	}
 }
 
+int setD(unsigned int addr, int index)
+{
+	set[GETS(addr)].line[index].dirty = false;
+	return index;
+}
+
+//determine the oldest line in the LRU
 int findoldest(unsigned int addr)
 {
 	int LRU[3];
@@ -217,27 +296,61 @@ int findLine(unsigned int address, int lineI)
 {
 
 	if(lineI > 3){
-		streamouts++;
-		return findoldest(address);
+		int old = findoldest(address);
+		if(set[GETS(address)].line[old].dirty)
+			streamouts++;
+		return old;
 	}
 	else if(set[GETS(address)].line[lineI].valid)
 		return findLine(address, (lineI + 1));	
 	else{
-		return lineI;
-		}		
+		return lineI;}		
+}
+
+//set the debug flags
+void setFlags(char flag)
+{
+	if(flag == 'd')
+		dump_flag = true;
+	if(flag == 't')
+		trace_flag = true;
+	if(flag == 'v')
+		version_flag = true;
 }
 
 //add the address to the specified line
 void addToCache(unsigned int addr, int lineI)
-{
+{	
+	//add new node to line history	
+	if(dump_flag){
 	//allocate new node
 	struct memNode * node = (struct memNode*) malloc(sizeof(struct memNode));
 	
 	//set address of node
 	node -> address = addr;
 	node -> next = set[GETS(addr)].line[lineI].history;	//point next node to history of line
-	
+
+	//set information for the dump debug
+	node -> read = g_read;
+	node -> hit = g_hit;
+	node -> tag = GETT(addr);
 	set[GETS(addr)].line[lineI].history = node;		//line history to new nod
+	}
+
 	set[GETS(addr)].line[lineI].valid = true;		//set valid
 	set[GETS(addr)].line[lineI].tag = GETT(addr);		//set tag
+}
+
+//print the history from a given line
+void printHistory(struct memNode* head)
+{
+	if(head == NULL)
+		return;
+
+	printHistory(head -> next);
+
+	printf("Address = 0x%x ", head-> address);
+	printf("Tag = 0x%x ", head -> tag);
+	printf("%s ", head -> hit ? "hit" : "miss");
+	printf("%s\n", head -> read? "read" : "write");
 }
