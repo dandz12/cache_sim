@@ -25,15 +25,14 @@ int findoldest(unsigned int);
 void setFlags(char);
 int setD(unsigned int, int);
 
-//this node will be used when we have the dump debug command present. We don't keep track of
-//the LRU, Valid, or Dirty bits as noted in part of the specs. This is because when the line would be
-//added to history, it will not be valid, will not be dirty, and the LRU will be 4 since it will
-//be the line evicted to end up in history.
 struct memNode{
 	unsigned int address;
 	int tag;
 	bool hit;
 	bool read;
+	int LRU;
+	bool dirty;
+	bool valid;
 	struct memNode* next;
 };
 
@@ -57,7 +56,8 @@ bool version_flag = false;
 bool trace_flag = false;
 bool dump_flag = false;
 bool g_read = false;		//this variable is a flag for the dump debug command
-bool g_hit = false;		//this variable is a flag for the dum debug command
+bool g_hit = false;		//this variable is a flag for the dump debug command
+int  g_lru = 0;
 int accesses = 0;
 int reads = 0;
 int writes = 0;
@@ -334,6 +334,9 @@ void addToCache(unsigned int addr, int lineI)
 	node -> read = g_read;
 	node -> hit = g_hit;
 	node -> tag = GETT(addr);
+	node -> LRU = 0;
+	node -> dirty = false;
+	node -> valid = true;
 	set[GETS(addr)].line[lineI].history = node;		//line history to new nod
 	}
 
@@ -352,5 +355,8 @@ void printHistory(struct memNode* head)
 	printf("Address = 0x%x ", head-> address);
 	printf("Tag = 0x%x ", head -> tag);
 	printf("%s ", head -> hit ? "hit" : "miss");
-	printf("%s\n", head -> read? "read" : "write");
+	printf("%s ", head -> read? "read" : "write");
+	printf("%s ", head -> dirty ? "dirty" : "clean");
+	printf("%s ", head -> valid ? "valid" : "invlaid");
+	printf("LRU: %d\n", head -> LRU);
 }
